@@ -1,1 +1,4 @@
-# http-client
+HttpClient
+==========
+
+A wrapper of HttpURLConnection class
