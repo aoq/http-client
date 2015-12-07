@@ -8,16 +8,20 @@
 package com.aokyu.sample.http;
 
 import com.aokyu.dev.http.HttpClient;
-import com.aokyu.dev.http.HttpHeaders;
+import com.aokyu.dev.http.HttpClient.Configuration;
+import com.aokyu.dev.http.HttpClient.ConfigurationBuilder;
 import com.aokyu.dev.http.HttpMethod;
 import com.aokyu.dev.http.HttpRequest;
 import com.aokyu.dev.http.HttpResponse;
+import com.aokyu.dev.http.content.ParametersBody;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.annotation.MainThread;
+import android.support.annotation.WorkerThread;
 import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.view.View;
@@ -28,7 +32,10 @@ import android.widget.TextView;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
@@ -54,36 +61,68 @@ public class SampleActivity extends AppCompatActivity {
 
     @OnClick(R.id.get_button)
     void onGetButtonClick() {
-        retrieveResponse();
+        new Retriever().execute();
     }
 
-    private void retrieveResponse() {
+    @MainThread
+    private void onRequestStart() {
+        mGetButton.setEnabled(false);
         mProgress.setVisibility(View.VISIBLE);
         mResultText.setVisibility(View.GONE);
-        new Retriever().execute();
+    }
+
+    @MainThread
+    private void onRequestCompleted() {
+        mGetButton.setEnabled(true);
+        mProgress.setVisibility(View.GONE);
+        mResultText.setVisibility(View.VISIBLE);
     }
 
     private final class Retriever extends AsyncTask<Void, Void, String> {
 
         private static final String TEST_ENDPOINT = "https://httpbin.org/get";
 
+        @MainThread
+        @Override
+        protected void onPreExecute() {
+            onRequestStart();
+        }
+
+        @WorkerThread
         @Override
         protected String doInBackground(Void... params) {
             HttpResponse response = null;
             try {
                 HttpClient client = new HttpClient();
-                URL url = new URL(TEST_ENDPOINT);
-                HttpHeaders headers = new HttpHeaders();
-                HttpRequest request = new HttpRequest(HttpMethod.GET, url, headers);
+                Configuration config = new ConfigurationBuilder()
+                        .setConnectTimeout(60000)
+                        .setReadTimeout(60000)
+                        .build();
+                client.setConfiguration(config);
+                // Add request parameters to URL.
+                Map<String, String> map = new HashMap<String, String>();
+                map.put("show_env", "1");
+                ParametersBody body = new ParametersBody(map);
+                URL url = new URL(TEST_ENDPOINT + "?" + body.toParameter());
+                HttpRequest request = new HttpRequest(HttpMethod.GET, url);
                 response = client.execute(request);
                 int statusCode = response.getStatusCode();
                 if (statusCode == HttpURLConnection.HTTP_OK) {
                     return response.getResponseAsString();
-                } else {
-                    return response.getErrorAsString();
                 }
             } catch (MalformedURLException e) {
-            } catch (IOException e) {
+                // Invalid URL.
+            } catch (SocketTimeoutException e) {
+                // Connection timeout.
+            } catch (IOException ioe) {
+                // Network I/O error or error response.
+                if (response != null) {
+                    try {
+                        return response.getErrorAsString();
+                    } catch (IOException e) {
+                        // Network I/O error.
+                    }
+                }
             } finally {
                 if (response != null) {
                     response.disconnect();
@@ -92,20 +131,18 @@ public class SampleActivity extends AppCompatActivity {
             return null;
         }
 
+        @MainThread
         @Override
         protected void onPostExecute(String result) {
-            if (TextUtils.isEmpty(result)) {
-                return;
+            if (!TextUtils.isEmpty(result)) {
+                try {
+                    JSONObject jsonObj = new JSONObject(result);
+                    mResultText.setText(jsonObj.toString(4));
+                } catch (JSONException e) {
+                    // Invalid response.
+                }
             }
-
-            try {
-                JSONObject jsonObj = new JSONObject(result);
-                mResultText.setText(jsonObj.toString(4));
-            } catch (JSONException e) {
-            }
-
-            mProgress.setVisibility(View.GONE);
-            mResultText.setVisibility(View.VISIBLE);
+            onRequestCompleted();
         }
     }
 }

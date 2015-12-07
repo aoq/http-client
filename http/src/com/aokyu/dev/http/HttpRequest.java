@@ -22,7 +22,17 @@ public class HttpRequest {
     private final MessageBody mMessageBody;
 
     /**
-     * Creates a new HTTP request for the parameters.
+     * Creates a new HTTP request.
+     *
+     * @param method The HTTP method.
+     * @param url The URL to request.
+     */
+    public HttpRequest(HttpMethod method, URL url) {
+        this(method, url, null, null);
+    }
+
+    /**
+     * Creates a new HTTP request with the headers.
      *
      * @param method The HTTP method.
      * @param url The URL to request.
@@ -33,7 +43,7 @@ public class HttpRequest {
     }
 
     /**
-     * Creates a new HTTP request for the parameters.
+     * Creates a new HTTP request with the headers and the message body.
      *
      * @param method The HTTP method.
      * @param url The URL to request.
